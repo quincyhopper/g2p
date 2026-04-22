@@ -1,0 +1,12 @@
+[project]
+name = "transformer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "editdistance>=0.8.1",
+    "matplotlib>=3.10.8",
+    "pandas>=3.0.1",
+    "torch>=2.10.0",
+]
