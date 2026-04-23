@@ -263,6 +263,13 @@ class LanguageModellingHead(nn.Module):
         self.projection = nn.Linear(d_model, vocab_size)
 
     def forward(self, x):
+        """
+        Args:
+            x: final decoder representation, tensor of shape (B, L, D)
+        
+        Returns:
+            Tensor of shape (B, L, V).
+        """
         return self.projection(x)
     
 class Seq2Seq(nn.Module):
