@@ -13,23 +13,22 @@ class LexicalEmbedding(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: tensor of tokenised input ids of shape (B, max_length_in_batch, V)
+
+        Returns:
+            Tensor of embedded input_ids of shape (B, L, D), where B is batch size, L is model max length, and D is d_model.
+        """
         return self.emb(x.long())
     
 class LearnedPositionalEmbedding(nn.Module):
-    """
-    Minimal learned positional embeddings (RoBERTa/BERT style).
-
-    - Uses an nn.Embedding table for positions.
-    - Supports padding via `padding_idx` (positions for pad tokens get 0 vector).
-    - Adds position embeddings to token embeddings.
-    """
-
-    def __init__(self, embedding_dim, max_len, padding_idx: int = 0):
+    def __init__(self, embedding_dim: int, max_len: int, padding_idx: int = 0):
         """
         Args:
             embedding_dim: hidden size
             max_len: max sequence length supported (often 512 + 2 specials)
-            padding_idx: index in input_ids used for padding (RoBERTa typically 1)
+            padding_idx: index with which to pad sequences shorter than max_len
         """
         super().__init__()
         self.max_len = max_len
@@ -44,8 +43,8 @@ class LearnedPositionalEmbedding(nn.Module):
     def forward(self, x: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: token embeddings, shape (batch, seq_len, d_model)
-            input_ids: token ids, shape (batch, seq_len)
+            x: token embeddings, shape (B, L, D)
+            input_ids: token ids, shape (B, L)
 
         Returns:
             x + learned position embeddings, same shape as x
@@ -103,8 +102,8 @@ class MultiHeadAttentionBlock(nn.Module):
     def __init__(self, input_dim: int, d_model: int, num_heads: int):
         """
         Args:
-            input_dim (int): the input embedding dim.
-            d_model (int): the attention dim, or size of projected embeddings.
+            input_dim (int): the input embedding dim. Same as d_model in this case.
+            d_model (int): size of projected embeddings.
             num_heads (int): the number of heads for multi-head attention. Used to compute d_head.
         """
         super().__init__()
@@ -121,12 +120,12 @@ class MultiHeadAttentionBlock(nn.Module):
     def forward(self, x: torch.Tensor, causal_masking: bool, context: torch.Tensor=None) -> torch.Tensor:
         """
         Args:
-            x: tensor of shape (batch, seq_len, d_model) representing a batch of embedded inputs.
+            x: tensor of shape (B, L, D) representing a batch of embedded inputs.
             causal_masking: if True, causal masking is used to compute attention. Otherwise, bidirectional attention is used.
-            context: (Optional) encoder output (batch, seq_len, d_model). Used for cross-attention.
+            context: (Optional) encoder output (B, L, D). Used for cross-attention.
 
         Returns:
-            Tensor of shape (batch, seq_len, d_model)
+            Tensor of shape (B, L, D)
         """
 
         # If no context (encoder), just use x for K and V
@@ -198,7 +197,7 @@ class TransformerLayer(nn.Module):
             encoder_output: output of the encoder.
 
         Returns:
-            Tensor of shape (batch, seq_len, d_model)
+            Tensor of shape (B, L, D)
         """
         
         # Self attention
