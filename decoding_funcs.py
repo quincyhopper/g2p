@@ -1,0 +1,78 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from training import byte_tokenise
+
+@torch.no_grad()
+def greedy_generate(model: nn.Module, word: str, device, max_len: int=64):
+    model.eval()
+
+    input_ids = byte_tokenise(word).to(device) # (1, L)
+    enc_out = model.encoder(input_ids)         # (1, L, d_model)
+    generated_indices = [256]
+
+    for _ in range(max_len):
+        current_input = torch.tensor([generated_indices], dtype=torch.long).to(device) # (1, step)
+        dec_out = model.decoder(current_input, enc_out)
+        logits = model.lm_head(dec_out)
+        next_token = torch.argmax(logits[:, -1, :], dim=-1).item()
+        generated_indices.append(next_token)
+
+        if next_token == 257:
+            break
+
+    filtered_bytes = bytes([i for i in generated_indices if 0 < i < 256])
+    return filtered_bytes.decode(encoding='utf-8', errors='ignore')
+
+@torch.no_grad()
+def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: int=64):
+    model.eval()
+    input_ids = byte_tokenise(word).to(device)
+
+    # Compute encoder output
+    encoder_out = model.encoder(input_ids)
+
+    # Initial state (log_probability, sequence_tensor)
+    bos_idx = 256
+    candidates = [(0.0, torch.tensor([[bos_idx]], device=device))]
+    finished_candidates = []
+
+    for _ in range(max_len):
+
+        # Phase 1: Beam expansion
+        for score, current_prefix in candidates:
+            expanded_candidates = []
+
+            # Compute log probs
+            decoder_out = model.decoder(current_prefix, encoder_out)
+            logits = model.lm_head(decoder_out) # (B, L, V)
+            log_probs = F.log_softmax(logits[:, -1, :], dim=-1) # (B, V)
+
+            # Select top K candidates
+            top_probs, top_indices = torch.topk(log_probs, k=beam_size, dim=-1) # Both of shape (B, beam_size)
+
+            for i in range(beam_size):
+                new_score = score + top_probs[0, i].item() # Take top score from i-th beam
+                new_token = top_indices[0, i].unsqueeze(0).unsqueeze(0) # Double unsqueeze to get from shape [] -> [1, 1]
+                new_prefix = torch.cat([current_prefix, new_token], dim=1) 
+
+                if top_indices[0, i].item() == 257:
+                    # If EOS token is reached, add to finished candidates
+                    finished_candidates.append((new_score, new_prefix))
+                else:
+                    expanded_candidates.append((new_score, new_prefix))
+
+        # Phase 2: Beam pruning
+        expanded_candidates.sort(lambda x: x[0], reverse=True) # Sort in descending order
+        candidates = expanded_candidates[:beam_size] # Cut off low scorers
+
+        # If we have beam_size finished candidates, break early
+        if len(finished_candidates) >= beam_size:
+            break 
+
+    # If some candidates aren't finished yet, just add them anyway
+    results = finished_candidates + candidates
+    results.sort(lambda x: x[0], reverse=True)
+
+    # From the best candidate, return the best sequence
+    return results[0][1]

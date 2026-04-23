@@ -1,12 +1,12 @@
 import torch
 import pandas as pd
-import torch.nn as nn
 import json
 from pathlib import Path
 from itertools import product
-from training import train_model, byte_tokenise
+from training import train_model
 from model import Seq2Seq
 from torch.utils.data import DataLoader
+from decoding_funcs import greedy_generate, beam_search
 
 def load_data():
     train_df = pd.read_csv('data/spa_train.tsv', sep='\t', names=['word', 'ipa'])
@@ -64,32 +64,6 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict):
 
     return best_loss, best_config, best_model_weights, best_train_log
 
-@torch.no_grad()
-def greedy_generate(model: nn.Module, word: str, device, max_len: int=50):
-    model.eval()
-
-    input_ids = byte_tokenise(word).to(device) # (1, L)
-    enc_out = model.encoder(input_ids)         # (1, L, d_model)
-    generated_indices = [256]
-
-    for _ in range(max_len):
-        current_input = torch.tensor([generated_indices], dtype=torch.long).to(device) # (1, step)
-        dec_out = model.decoder(current_input, enc_out)
-        logits = model.lm_head(dec_out)
-        next_token = torch.argmax(logits[:, -1, :], dim=-1).item()
-        generated_indices.append(next_token)
-
-        if next_token == 257:
-            break
-
-    filtered_bytes = bytes([i for i in generated_indices if 0 < i < 256])
-    return filtered_bytes.decode(encoding='utf-8', errors='ignore')
-
-def generate_test_preds(model, test_df: pd.DataFrame, generation_func, device):
-    df = test_df.copy()
-    df['prediction'] = df['word'].apply(lambda word: generation_func(model, word, device))
-    return df
-
 if __name__ == "__main__":
 
     # Load data
@@ -123,5 +97,7 @@ if __name__ == "__main__":
 
     # Generate test set predictions
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    results_df = generate_test_preds(model, test_df, greedy_generate, device)
+    results_df = test_df.copy()
+    results_df['greedy_output'] = results_df['word'].apply(lambda word: greedy_generate(model, word, device))
+    results_df['beam_output'] = results_df['word'].apply(lambda word: beam_search(model, word, device))
     results_df.to_csv('test_results.csv', index=False)
