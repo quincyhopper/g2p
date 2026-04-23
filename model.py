@@ -196,6 +196,9 @@ class TransformerLayer(nn.Module):
         Args:
             x: if encoder, this is the embeddings of the word tokens. If decoder, this is the embeddings of the IPA sequence.
             encoder_output: output of the encoder.
+
+        Returns:
+            Tensor of shape (batch, seq_len, d_model)
         """
         
         # Self attention
