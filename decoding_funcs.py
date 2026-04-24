@@ -3,6 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from training import byte_tokenise
 
+def decode_tokens(indices: torch.Tensor | list):
+    if isinstance(indices, torch.Tensor):
+        indices = indices.flatten().tolist()
+
+    # Filter special tokens and padding
+    filtered_bytes = bytes([i for i in indices if 0 < i < 256])
+    return filtered_bytes.decode(encoding='utf-8', errors='ignore')
+
 @torch.no_grad()
 def greedy_generate(model: nn.Module, word: str, device, max_len: int=64):
     model.eval()
@@ -21,8 +29,7 @@ def greedy_generate(model: nn.Module, word: str, device, max_len: int=64):
         if next_token == 257:
             break
 
-    filtered_bytes = bytes([i for i in generated_indices if 0 < i < 256])
-    return filtered_bytes.decode(encoding='utf-8', errors='ignore')
+    return decode_tokens(generated_indices)
 
 @torch.no_grad()
 def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: int=64):
@@ -40,8 +47,8 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
     for _ in range(max_len):
 
         # Phase 1: Beam expansion
+        expanded_candidates = []    
         for score, current_prefix in candidates:
-            expanded_candidates = []
 
             # Compute log probs
             decoder_out = model.decoder(current_prefix, encoder_out)
@@ -53,7 +60,7 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
 
             for i in range(beam_size):
                 new_score = score + top_probs[0, i].item() # Take top score from i-th beam
-                new_token = top_indices[0, i].unsqueeze(0).unsqueeze(0) # Double unsqueeze to get from shape [] -> [1, 1]
+                new_token = top_indices[0, i].view(1, 1) # (1, 1)
                 new_prefix = torch.cat([current_prefix, new_token], dim=1) 
 
                 if top_indices[0, i].item() == 257:
@@ -74,5 +81,6 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
     results = finished_candidates + candidates
     results.sort(key=lambda x: x[0], reverse=True)
 
-    # From the best candidate, return the best sequence
-    return results[0][1]
+    # From the best candidates, get the very best
+    winner =  results[0][1]
+    return decode_tokens(winner)
