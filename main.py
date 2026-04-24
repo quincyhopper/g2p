@@ -6,7 +6,7 @@ from itertools import product
 from training import train_model
 from model import Seq2Seq
 from torch.utils.data import DataLoader
-from decoding_funcs import greedy_generate, beam_search
+from decoding_funcs import greedy_generate
 
 def load_data():
     train_df = pd.read_csv('data/spa_train.tsv', sep='\t', names=['word', 'ipa'])
@@ -105,5 +105,4 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results_df = test_df.copy()
     results_df['greedy_output'] = results_df['word'].apply(lambda word: greedy_generate(model, word, device))
-    results_df['beam_output'] = results_df['word'].apply(lambda word: beam_search(model, word, device))
     results_df.to_csv('test_results.csv', index=False)
