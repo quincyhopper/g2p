@@ -15,14 +15,20 @@ def load_data():
 
     return train_df, val_df, test_df
 
-def load_best_model(best_model, best_config: dict, from_save: bool=False):
+def load_best_model(best_model, best_config: dict):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model_keys = ['d_model', 'num_heads', 'mlp_mode', 'num_layers', 'dropout_p'] # Filter out optimiser config
+
+    if best_config is None:
+        with open('config.json', 'r') as f:
+            best_config = json.load(f)
+
+
     model_config = {k: best_config[k] for k in model_keys if k in best_config}
     model = Seq2Seq(**model_config).to(device)
 
-    if from_save and best_model is None:
+    if best_model is None:
         model.load_state_dict(torch.load('model.pt', map_location=device, weights_only=True))
     else:
         model.load_state_dict(best_model)
