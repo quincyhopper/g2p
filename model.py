@@ -233,6 +233,7 @@ class TransformerStack(nn.Module):
         # Input processing
         self.embedding = LexicalEmbedding(vocab_size, d_model, padding_idx=0)
         self.pos_embedding = LearnedPositionalEmbedding(d_model, max_len, padding_idx=0)
+        self.dropout = nn.Dropout(dropout_p)
 
         # Transformer
         self.layers = nn.ModuleList([
@@ -240,12 +241,11 @@ class TransformerStack(nn.Module):
             for _ in range(num_layers)
         ])
 
-        # TODO: do we need dropout in the embedding layer?
-
     def forward(self, input_ids: list[list[int]], encoder_output: torch.Tensor=None ):
 
         x = self.embedding(input_ids)
         x = self.pos_embedding(x, input_ids)
+        x = self.dropout(x)
 
         if self.is_decoder and encoder_output is not None:
             for layer in self.layers:
