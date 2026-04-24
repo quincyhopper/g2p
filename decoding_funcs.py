@@ -64,7 +64,7 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
                 new_prefix = torch.cat([current_prefix, new_token], dim=1) 
 
                 if top_indices[0, i].item() == 257:
-                    # If EOS token is reached, add to finished candidates
+                    new_score = new_score / (len(new_prefix[0]) ** 0.7)
                     finished_candidates.append((new_score, new_prefix))
                 else:
                     expanded_candidates.append((new_score, new_prefix))
@@ -77,10 +77,12 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
         if len(finished_candidates) >= beam_size:
             break 
 
-    # If some candidates aren't finished yet, just add them anyway
-    results = finished_candidates + candidates
-    results.sort(key=lambda x: x[0], reverse=True)
+    # Normalise current candidates and compare to finished ones
+    all_results = finished_candidates
+    for score, prefix in candidates:
+        norm_score = score / (len(prefix[0]) ** 0.7)
+        all_results.append((norm_score, prefix))
 
     # From the best candidates, get the very best
-    winner =  results[0][1]
-    return decode_tokens(winner)
+    all_results.sort(key=lambda x: x[0], reverse=True)
+    return decode_tokens(all_results[0][1])
