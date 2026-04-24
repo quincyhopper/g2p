@@ -63,7 +63,7 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
                     expanded_candidates.append((new_score, new_prefix))
 
         # Phase 2: Beam pruning
-        expanded_candidates.sort(lambda x: x[0], reverse=True) # Sort in descending order
+        expanded_candidates.sort(key=lambda x: x[0], reverse=True) # Sort in descending order
         candidates = expanded_candidates[:beam_size] # Cut off low scorers
 
         # If we have beam_size finished candidates, break early
@@ -72,7 +72,7 @@ def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: 
 
     # If some candidates aren't finished yet, just add them anyway
     results = finished_candidates + candidates
-    results.sort(lambda x: x[0], reverse=True)
+    results.sort(key=lambda x: x[0], reverse=True)
 
     # From the best candidate, return the best sequence
     return results[0][1]
