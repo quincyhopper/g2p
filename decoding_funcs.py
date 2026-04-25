@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from training import byte_tokenise
+from model import byte_tokenise
 
 def decode_tokens(indices: torch.Tensor | list):
     if isinstance(indices, torch.Tensor):

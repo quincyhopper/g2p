@@ -2,39 +2,8 @@ import torch
 import torch.nn as nn
 import copy
 from torch.optim import AdamW, Optimizer
-from model import Seq2Seq
+from model import Seq2Seq, byte_tokenise
 from decoding_funcs import greedy_generate
-
-def byte_tokenise(inputs: list[str] | str) -> torch.Tensor:
-    """Tokenise characters into ints ranging from 0-257.
-
-    Args:
-        inputs (list[str] | str): string or list of strings to be tokenised
-
-    Returns:
-        Tensor of shape (B, L) where L is the length of the longest input string.
-    """
-
-    # If input is just a string, put that string into a list
-    if type(inputs) == str:
-        inputs = [inputs]
-
-    # For each string in the inputs list, make a list of byte encodings
-    input_bytes = list(map(
-        lambda char: list(map(int, char.encode())),
-        inputs
-    ))
-
-    # Prepend 256 (BOS) and append 257 (EOS)
-    for seq in input_bytes:
-        seq.insert(0, 256)
-        seq.append(257)
-
-    # Add padding to make all inputs the same length
-    max_len = max(map(len, input_bytes))
-    padded_bytes = [x + [0] * (max_len - len(x)) for x in input_bytes]
-
-    return torch.tensor(padded_bytes).long() # Shape (B, max_len)
 
 def train(model: nn.Module, train_loader, optimiser: Optimizer, loss_fn: nn.modules.loss._Loss, device):
     model.train()
