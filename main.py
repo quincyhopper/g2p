@@ -39,7 +39,7 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict):
     print("Starting hyperparameter search", flush=True)
 
     # Init best outcomes
-    best_loss = float('inf')
+    best_wacc = 0.0
     best_config = None
     best_model_weights = None
     best_train_log = None
@@ -58,17 +58,17 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict):
         print(f"\nTesting [{i}/{len(combos)}]: {current_config}", flush=True)
 
         # Train model
-        model_weights, model_loss, train_log = train_model(train_loader, val_loader, **current_config)
-        print(f"Val loss: {model_loss:.4f}", flush=True)
+        model_weights, model_wacc, train_log = train_model(train_loader, val_loader, **current_config)
+        print(f"Val wacc: {model_wacc:.4f}", flush=True)
 
         # Determine if model is best
-        if model_loss < best_loss:
-            best_loss = model_loss
+        if model_wacc > best_wacc:
+            best_wacc = model_wacc
             best_config = current_config
             best_model_weights = model_weights
             best_train_log = train_log
 
-    return best_loss, best_config, best_model_weights, best_train_log
+    return best_wacc, best_config, best_model_weights, best_train_log
 
 if __name__ == "__main__":
 
@@ -88,10 +88,10 @@ if __name__ == "__main__":
     }   
 
     # Get best model
-    best_loss, best_config, best_model, train_log = hparam_search(train_df, val_df, params)
+    best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, params)
     print("\nHyperparameter search complete")
     print(f"Best config: {best_config}")
-    print(f"Best val loss: {best_loss:.4f}")
+    print(f"Best val wacc: {best_wacc:.4f}")
 
     # Save everything
     torch.save(best_model, 'model.pt')
@@ -104,5 +104,5 @@ if __name__ == "__main__":
     # Generate test set predictions
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results_df = test_df.copy()
-    results_df['greedy_output'] = results_df['word'].apply(lambda word: greedy_generate(model, word, device))
+    results_df['prediction'] = results_df['word'].apply(lambda word: greedy_generate(model, word, device))
     results_df.to_csv('test_results.csv', index=False)

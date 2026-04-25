@@ -3,6 +3,7 @@ import torch.nn as nn
 import copy
 from torch.optim import AdamW, Optimizer
 from model import Seq2Seq
+from decoding_funcs import greedy_generate
 
 def byte_tokenise(inputs: list[str] | str) -> torch.Tensor:
     """Tokenise characters into ints ranging from 0-257.
@@ -105,6 +106,40 @@ class EarlyStopping:
             self.counter += 1
 
         return self.counter >= self.patience
+    
+def evaluate_wacc(model: nn.Module, val_loader, device):
+    """Calculate word accuracy (WAcc) instead of loss during validation step."""
+    correct = 0
+    total = 0
+    for batch in val_loader:
+        for word, ipa in zip(batch['word'], batch['ipa']):
+            pred = greedy_generate(model, word, device)
+            if pred == ipa:
+                correct += 1
+
+            total += 1
+
+    return (correct / total)
+
+class EarlyStoppingWAcc:
+    def __init__(self, patience, delta=1e-4):
+        self.patience = patience
+        self.delta = delta
+        self.best_wacc = 0.0
+        self.counter = 0
+        self.best_epoch = None
+        self.best_weights = None
+
+    def step(self, model, val_wacc, epoch):
+        if val_wacc > self.best_wacc + self.delta:
+            self.counter = 0
+            self.best_wacc = val_wacc
+            self.best_epoch = epoch
+            self.best_weights = copy.deepcopy(model.state_dict())
+        else:
+            self.counter += 1
+
+        return self.counter >= self.patience
 
 def train_model(train_loader, val_loader, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -119,23 +154,25 @@ def train_model(train_loader, val_loader, lr, weight_decay, dropout_p, d_model, 
     
     optim = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.CrossEntropyLoss(ignore_index=0) # Ignore padding index
-    early_stopping = EarlyStopping(patience=10)
+    early_stopping = EarlyStoppingWAcc(patience=10)
 
     train_log = []
     for epoch in range(1000000): # Effectively infinite training
 
         train_loss = train(model, train_loader, optim, criterion, device=device)
         val_loss = eval(model, val_loader, criterion, device)
+        val_wacc = evaluate_wacc(model, val_loader, device)
 
         train_log.append({
             'epoch': epoch+1,
             'train_loss': train_loss,
-            'val_loss': val_loss
+            'val_loss': val_loss,
+            'val_wacc': val_wacc
         })
 
-        stop = early_stopping.step(model, val_loss, epoch=epoch+1)
+        stop = early_stopping.step(model, val_wacc, epoch=epoch+1)
         if stop:
-            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch+1} with val loss {early_stopping.best_loss:.4f}")
+            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch+1} with val wacc {early_stopping.best_wacc:.4f}")
             break
 
-    return early_stopping.best_weights, early_stopping.best_loss, train_log
+    return early_stopping.best_weights, early_stopping.best_wacc, train_log
