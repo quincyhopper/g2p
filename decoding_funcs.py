@@ -12,24 +12,39 @@ def decode_tokens(indices: torch.Tensor | list):
     return filtered_bytes.decode(encoding='utf-8', errors='ignore')
 
 @torch.no_grad()
-def greedy_generate(model: nn.Module, word: str, device, max_len: int=64):
+def greedy_generate(model: nn.Module, words: list, device, max_len: int=64):
     model.eval()
 
-    input_ids = byte_tokenise(word).to(device) # (1, L)
-    enc_out = model.encoder(input_ids)         # (1, L, d_model)
-    generated_indices = [256]
+    input_ids = byte_tokenise(words).to(device) # (B, max_length_in_batch)
+    enc_out = model.encoder(input_ids)         # (B, L, d_model)
+    batch_size = enc_out.shape[0]
 
-    for _ in range(max_len):
-        current_input = torch.tensor([generated_indices], dtype=torch.long).to(device) # (1, step)
-        dec_out = model.decoder(current_input, enc_out)
-        logits = model.lm_head(dec_out)
-        next_token = torch.argmax(logits[:, -1, :], dim=-1).item()
-        generated_indices.append(next_token)
+    # Create tensor of shape (B, 1) containing the BOS token (256)
+    generated_seqs = torch.full((batch_size, 1), 256, dtype=torch.long, device=device)
 
-        if next_token == 257:
+    # Each element set to True if the sequence has finished (hit EOS)
+    finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
+    for _ in range(max_len - 1):
+        dec_out = model.decoder(generated_seqs, enc_out)
+        logits = model.lm_head(dec_out) # (B, current_step, V)
+        next_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True) # (B, 1)
+
+        # Add the generated tokens to the sequences
+        generated_seqs = torch.cat([generated_seqs, next_tokens], dim=1)
+
+        # Check if the last token is EOS and change finished to True if it is 
+        finished = torch.logical_or(finished, next_tokens.squeeze(-1) == 257)
+
+        # If every word has finished, break
+        if finished.all():
             break
 
-    return decode_tokens(generated_indices)
+    results = []
+    for i in range(batch_size):
+        results.append(decode_tokens(generated_seqs[i]))
+
+    return results
 
 @torch.no_grad()
 def beam_search(model: nn.Module, word: str, device, beam_size: int=4, max_len: int=64):

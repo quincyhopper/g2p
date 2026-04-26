@@ -103,6 +103,7 @@ if __name__ == "__main__":
 
     # Generate test set predictions
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    test_words = test_df['word'].tolist()
     results_df = test_df.copy()
-    results_df['prediction'] = results_df['word'].apply(lambda word: greedy_generate(model, word, device))
+    results_df['prediction'] = greedy_generate(model, test_words, device)
     results_df.to_csv('test_results.csv', index=False)

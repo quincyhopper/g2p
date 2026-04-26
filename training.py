@@ -80,15 +80,16 @@ def evaluate_wacc(model: nn.Module, val_loader, device):
     """Calculate word accuracy (WAcc) instead of loss during validation step."""
     correct = 0
     total = 0
-    for batch in val_loader:
-        for word, ipa in zip(batch['word'], batch['ipa']):
-            pred = greedy_generate(model, word, device)
-            if pred == ipa:
-                correct += 1
 
+    for batch in val_loader:
+        preds = greedy_generate(model, batch['word'], device)
+
+        for pred, gold in zip(preds, batch['ipa']):
+            if pred == gold:
+                correct += 1
             total += 1
 
-    return (correct / total)
+    return correct / total
 
 class EarlyStoppingWAcc:
     def __init__(self, patience, delta=1e-4):
