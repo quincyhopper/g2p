@@ -92,7 +92,7 @@ def evaluate_wacc(model: nn.Module, val_loader, device):
     return correct / total
 
 class EarlyStoppingWAcc:
-    def __init__(self, patience, delta=1e-3):
+    def __init__(self, patience, delta=0.0):
         self.patience = patience
         self.delta = delta
         self.best_wacc = -float('inf')
