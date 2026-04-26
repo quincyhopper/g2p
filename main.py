@@ -80,7 +80,7 @@ if __name__ == "__main__":
     params = {
         'lr': [1e-4, 5e-4],
         'weight_decay': [1e-3],
-        'dropout_p': [0.1, 0.5],
+        'dropout_p': [0.0, 0.1, 0.2],
         'd_model': [128, 256],
         'num_layers': [4, 6],
         'num_heads': [16],
