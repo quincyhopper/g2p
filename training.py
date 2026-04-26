@@ -97,7 +97,7 @@ class EarlyStoppingWAcc:
         self.delta = delta
         self.best_wacc = -float('inf')
         self.counter = 0
-        self.best_epoch = None
+        self.best_epoch = 0
         self.best_weights = None
 
     def step(self, model, val_wacc, epoch):
@@ -124,7 +124,7 @@ def train_model(train_loader, val_loader, lr, weight_decay, dropout_p, d_model, 
     
     optim = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.CrossEntropyLoss(ignore_index=0) # Ignore padding index
-    early_stopping = EarlyStoppingWAcc(patience=10)
+    early_stopping = EarlyStoppingWAcc(patience=30)
 
     train_log = []
     for epoch in range(1000000): # Effectively infinite training
