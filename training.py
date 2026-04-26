@@ -124,7 +124,7 @@ def train_model(train_loader, val_loader, lr, weight_decay, dropout_p, d_model, 
     
     optim = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.CrossEntropyLoss(ignore_index=0) # Ignore padding index
-    early_stopping = EarlyStoppingWAcc(patience=30)
+    early_stopping = EarlyStoppingWAcc(patience=100)
 
     train_log = []
     for epoch in range(1000000): # Effectively infinite training
@@ -142,7 +142,7 @@ def train_model(train_loader, val_loader, lr, weight_decay, dropout_p, d_model, 
 
         stop = early_stopping.step(model, val_wacc, epoch=epoch+1)
         if stop:
-            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch+1} with val wacc {early_stopping.best_wacc:.4f}")
+            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch} with val wacc {early_stopping.best_wacc:.4f}")
             break
 
     return early_stopping.best_weights, early_stopping.best_wacc, train_log
