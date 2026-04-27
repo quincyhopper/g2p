@@ -110,15 +110,17 @@ class EarlyStopping:
         self.best_epoch = None
         self.best_weights = None
 
-        if self.metric == 'loss':
+        if self.metric in ('loss', 'per'):
             self.best_metric = float('inf')
-        elif metric == 'wacc' or metric == 'per':
+        elif metric == 'wacc':
             self.best_metric = -float('inf')
 
     def step(self, model, metric, epoch):
-        if self.metric == 'loss':
+        if self.metric in ('loss', 'per'):
+            # Decreasing is better
             is_better = metric < self.best_metric - self.delta
         else:
+            # Increasing is better
             is_better = metric > self.best_metric + self.delta
 
         if is_better:
@@ -146,15 +148,18 @@ def calculate_wacc(model: nn.Module, val_loader, device):
     return correct / total
 
 def calculate_per(model: nn.Module, val_loader, device):
+    total_dist = 0.0
+    total_words = 0
 
-    total = 0.0
     for batch in val_loader:
         preds = greedy_generate(model, batch['word'], device)
 
         for pred, gold in zip(preds, batch['ipa']):
             dist = editdistance.eval(pred, gold)
             norm_dist = dist / len(gold)
-            total += norm_dist
+            total_dist += norm_dist
+
+    return total_dist / total_words
 
 def train_model(train_loader, val_loader, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -224,9 +229,11 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, st
         print(f"Val {stopping_metric}: {model_metric:.4f}", flush=True)
 
         # Determine if model is best
-        if stopping_metric == 'loss':
+        if stopping_metric in ('loss', 'per'):
+            # Decreasing is bette 
             model_is_better = model_metric < best_metric
-        elif stopping_metric == 'wacc' or stopping_metric == 'per':
+        elif stopping_metric == 'wacc':
+            # Increasing is better 
             model_is_better = model_metric > best_metric
 
         if model_is_better:
@@ -237,7 +244,7 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, st
 
     print("\nHyperparameter search complete")
     print(f"Best config: {best_config}")
-    print(f"Best val wacc: {best_wacc:.4f}")
+    print(f"Best val {stopping_metric}: {best_metric:.4f}")
 
     return best_metric, best_config, best_model_weights, best_train_log
 
