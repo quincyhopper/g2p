@@ -30,7 +30,7 @@ def load_data():
 
     return train_df, val_df, test_df
 
-def load_best_model(best_model, best_config: dict):
+def load_best_model(best_model=None, best_config: dict=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model_keys = ['d_model', 'num_heads', 'mlp_mode', 'num_layers', 'dropout_p'] # Filter out optimiser config
@@ -38,7 +38,6 @@ def load_best_model(best_model, best_config: dict):
     if best_config is None:
         with open('config.json', 'r') as f:
             best_config = json.load(f)
-
 
     model_config = {k: best_config[k] for k in model_keys if k in best_config}
     model = Seq2Seq(**model_config).to(device)
@@ -207,7 +206,7 @@ def train_model(train_loader, val_loader, stopping_metric, lr, weight_decay, dro
 def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, stopping_metric: str):
 
     # Init best outcomes
-    best_metric = 0.0
+    best_metric = float('inf') if stopping_metric in ('loss', 'per') else -float('inf')
     best_config = None
     best_model_weights = None
     best_train_log = None
