@@ -176,18 +176,24 @@ def train_model(train_loader, val_loader, stopping_metric, lr, weight_decay, dro
 
         train_loss = train(model, train_loader, optim, criterion, device=device)
         val_loss = eval(model, val_loader, criterion, device)
-        val_wacc = calculate_wacc(model, val_loader, device)
+        
+        if stopping_metric == 'loss':
+            metric = val_loss
+        elif stopping_metric == 'wacc':
+            metric = calculate_wacc(model, val_loader, device)
+        elif stopping_metric == 'per':
+            metric = calculate_per(model, val_loader, device)
 
         train_log.append({
             'epoch': epoch+1,
             'train_loss': train_loss,
             'val_loss': val_loss,
-            'val_wacc': val_wacc
+            f'val_{stopping_metric}': metric
         })
 
-        stop = early_stopping.step(model, val_wacc, epoch=epoch+1)
+        stop = early_stopping.step(model, metric, epoch=epoch+1)
         if stop:
-            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch} with val wacc {early_stopping.best_metric:.4f}")
+            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch} with val {stopping_metric} {early_stopping.best_metric:.4f}")
             break
 
     return early_stopping.best_weights, early_stopping.best_metric, train_log
@@ -221,7 +227,7 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, st
         if stopping_metric == 'loss':
             model_is_better = model_metric < best_metric
         elif stopping_metric == 'wacc' or stopping_metric == 'per':
-            model_is_better = model_metric < best_metric
+            model_is_better = model_metric > best_metric
 
         if model_is_better:
             best_metric = model_metric
@@ -254,7 +260,7 @@ if __name__ == "__main__":
     train_df, val_df, test_df = load_data()
 
     # Get best model
-    best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, PARAMS)
+    best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, PARAMS, STOPPING_METRIC)
 
     # Save everything
     torch.save(best_model, 'model.pt')
