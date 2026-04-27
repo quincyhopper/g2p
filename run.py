@@ -4,14 +4,24 @@ import pandas as pd
 import json
 import copy
 import editdistance
+import random
+import numpy as np
+from torch.utils.data import DataLoader
+from torch.optim import Optimizer, AdamW
 from pathlib import Path
 from itertools import product
 from model import Seq2Seq
-from torch.utils.data import DataLoader
-from torch.optim import Optimizer, AdamW
 
 from decoding_funcs import greedy_generate
 from model import byte_tokenise
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def load_data():
     train_df = pd.read_csv('data/spa_train.tsv', sep='\t', names=['word', 'ipa'])
@@ -219,15 +229,15 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, st
             best_model_weights = model_weights
             best_train_log = train_log
 
+    print("\nHyperparameter search complete")
+    print(f"Best config: {best_config}")
+    print(f"Best val wacc: {best_wacc:.4f}")
+
     return best_metric, best_config, best_model_weights, best_train_log
 
 if __name__ == "__main__":
-    
+    set_seed(42)
 
-    # Load data
-    train_df, val_df, test_df = load_data()
-
-    # Define search space
     PARAMS = {
         'lr': [1e-4, 5e-4],
         'weight_decay': [1e-3],
@@ -240,11 +250,11 @@ if __name__ == "__main__":
 
     STOPPING_METRIC = 'per'
 
+    # Load data
+    train_df, val_df, test_df = load_data()
+
     # Get best model
     best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, PARAMS)
-    print("\nHyperparameter search complete")
-    print(f"Best config: {best_config}")
-    print(f"Best val wacc: {best_wacc:.4f}")
 
     # Save everything
     torch.save(best_model, 'model.pt')
