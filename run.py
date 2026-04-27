@@ -158,6 +158,7 @@ def calculate_per(model: nn.Module, val_loader, device):
             dist = editdistance.eval(pred, gold)
             norm_dist = dist / len(gold)
             total_dist += norm_dist
+            total_words += 1
 
     return total_dist / total_words
 
