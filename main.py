@@ -1,12 +1,22 @@
 import torch
 import pandas as pd
 import json
+import random
+import numpy as np
 from pathlib import Path
 from itertools import product
 from training import train_model
 from model import Seq2Seq
 from torch.utils.data import DataLoader
 from decoding_funcs import greedy_generate
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def load_data():
     train_df = pd.read_csv('data/spa_train.tsv', sep='\t', names=['word', 'ipa'])
@@ -86,6 +96,7 @@ if __name__ == "__main__":
         'num_heads': [16],
         'mlp_mode': ['relu', 'swiglu']
     }   
+    set_seed(42)
 
     # Get best model
     best_loss, best_config, best_model, train_log = hparam_search(train_df, val_df, params)
