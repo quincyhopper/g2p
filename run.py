@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import pandas as pd
+import pickle
 import json
 import copy
 import editdistance
@@ -12,8 +13,7 @@ from pathlib import Path
 from itertools import product
 from model import Seq2Seq
 
-from decoding_funcs import greedy_generate
-from model import byte_tokenise
+from char_tokeniser import CharTokeniser
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -33,12 +33,12 @@ def load_data():
 def load_best_model(best_model=None, best_config: dict=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_keys = ['d_model', 'num_heads', 'mlp_mode', 'num_layers', 'dropout_p'] # Filter out optimiser config
-
     if best_config is None:
         with open('config.json', 'r') as f:
             best_config = json.load(f)
 
+    # Load model
+    model_keys = ['vocab_size', 'd_model', 'num_heads', 'mlp_mode', 'num_layers', 'dropout_p'] # Get only architecture parameters
     model_config = {k: best_config[k] for k in model_keys if k in best_config}
     model = Seq2Seq(**model_config).to(device)
 
@@ -49,7 +49,7 @@ def load_best_model(best_model=None, best_config: dict=None):
 
     return model
 
-def train(model: nn.Module, train_loader, optimiser: Optimizer, loss_fn: nn.modules.loss._Loss, device):
+def train(model: nn.Module, train_loader, optimiser: Optimizer, loss_fn: nn.modules.loss._Loss, tokeniser: CharTokeniser, device):
     model.train()
     vocab_size = model.lm_head.projection.out_features
 
@@ -59,8 +59,8 @@ def train(model: nn.Module, train_loader, optimiser: Optimizer, loss_fn: nn.modu
         optimiser.zero_grad()
 
         # Tokenise (B, L)
-        word_tokens = byte_tokenise(batch['word']).to(device)
-        ipa_tokens = byte_tokenise(batch['ipa']).to(device)
+        word_tokens = tokeniser.encode(batch['word']).to(device)
+        ipa_tokens = tokeniser.encode(batch['ipa'], is_ipa=True).to(device)
 
         # Shift targets (teacher forcing)
         dec_input = ipa_tokens[:, :-1] # Drop last token (EOS)
@@ -78,7 +78,7 @@ def train(model: nn.Module, train_loader, optimiser: Optimizer, loss_fn: nn.modu
     return epoch_loss / len(train_loader)
 
 @torch.no_grad()
-def eval(model: nn.Module, val_loader, loss_fn: nn.modules.loss._Loss, device):
+def eval(model: nn.Module, val_loader, loss_fn: nn.modules.loss._Loss, tokeniser: CharTokeniser, device):
     model.eval()
     vocab_size = model.lm_head.projection.out_features
 
@@ -86,8 +86,8 @@ def eval(model: nn.Module, val_loader, loss_fn: nn.modules.loss._Loss, device):
     for batch in val_loader:
         
         # Tokenise
-        word_tokens = byte_tokenise(batch['word']).to(device)
-        ipa_tokens = byte_tokenise(batch['ipa']).to(device)
+        word_tokens = tokeniser.encode(batch['word']).to(device)
+        ipa_tokens = tokeniser.encode(batch['ipa'], is_ipa=True).to(device)
 
         # Shift targets (teacher forcing)
         dec_input = ipa_tokens[:, :-1]
@@ -132,13 +132,13 @@ class EarlyStopping:
 
         return self.counter >= self.patience
     
-def calculate_wacc(model: nn.Module, val_loader, device):
+def calculate_wacc(model: nn.Module, val_loader, device, tokeniser):
     """Calculate word accuracy (WAcc) instead of loss during validation step."""
     correct = 0
     total = 0
 
     for batch in val_loader:
-        preds = greedy_generate(model, batch['word'], device)
+        preds = greedy_generate(model, batch['word'], device, tokeniser)
         for pred, gold in zip(preds, batch['ipa']):
             if pred == gold:
                 correct += 1
@@ -146,25 +146,25 @@ def calculate_wacc(model: nn.Module, val_loader, device):
 
     return correct / total
 
-def calculate_per(model: nn.Module, val_loader, device):
+def calculate_per(model: nn.Module, val_loader, device, tokeniser):
     total_dist = 0.0
     total_words = 0
 
     for batch in val_loader:
-        preds = greedy_generate(model, batch['word'], device)
-
+        preds = greedy_generate(model, batch['word'], device, tokeniser)
         for pred, gold in zip(preds, batch['ipa']):
-            dist = editdistance.eval(pred, gold)
-            norm_dist = dist / len(gold)
-            total_dist += norm_dist
+            pred_tokens = pred.split()
+            gold_tokens = gold.split()
+            total_dist += editdistance.eval(pred_tokens, gold_tokens) / len(gold_tokens)
             total_words += 1
 
     return total_dist / total_words
 
-def train_model(train_loader, val_loader, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
+def train_model(train_loader, val_loader, tokeniser, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Seq2Seq(
+        vocab_size=tokeniser.vocab_size,
         d_model=d_model,
         num_heads=num_heads, 
         mlp_mode=mlp_mode, 
@@ -179,15 +179,15 @@ def train_model(train_loader, val_loader, stopping_metric, lr, weight_decay, dro
     train_log = []
     for epoch in range(1000000): # Effectively infinite training
 
-        train_loss = train(model, train_loader, optim, criterion, device=device)
-        val_loss = eval(model, val_loader, criterion, device)
+        train_loss = train(model, train_loader, optim, criterion, tokeniser, device=device)
+        val_loss = eval(model, val_loader, criterion, tokeniser, device)
         
         if stopping_metric == 'loss':
             metric = val_loss
         elif stopping_metric == 'wacc':
-            metric = calculate_wacc(model, val_loader, device)
+            metric = calculate_wacc(model, val_loader, device, tokeniser)
         elif stopping_metric == 'per':
-            metric = calculate_per(model, val_loader, device)
+            metric = calculate_per(model, val_loader, device, tokeniser)
 
         train_log.append({
             'epoch': epoch+1,
@@ -203,7 +203,7 @@ def train_model(train_loader, val_loader, stopping_metric, lr, weight_decay, dro
 
     return early_stopping.best_weights, early_stopping.best_metric, train_log
 
-def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, stopping_metric: str):
+def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharTokeniser, params: dict, stopping_metric: str):
 
     # Init best outcomes
     best_metric = float('inf') if stopping_metric in ('loss', 'per') else -float('inf')
@@ -225,7 +225,7 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, st
         print(f"\nTesting [{i}/{len(combos)}]: {current_config}", flush=True)
 
         # Train model
-        model_weights, model_metric, train_log = train_model(train_loader, val_loader, stopping_metric, **current_config)
+        model_weights, model_metric, train_log = train_model(train_loader, val_loader, tokeniser, stopping_metric, **current_config)
         print(f"Val {stopping_metric}: {model_metric:.4f}", flush=True)
 
         # Determine if model is best
@@ -248,6 +248,41 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, params: dict, st
 
     return best_metric, best_config, best_model_weights, best_train_log
 
+@torch.no_grad()
+def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokeniser, max_len: int=50):
+    model.eval()
+
+    input_ids = tokeniser.encode(words).to(device) # (B, max_length_in_batch)
+    enc_out = model.encoder(input_ids)         # (B, L, d_model)
+    batch_size = enc_out.shape[0]
+
+    # Create tensor of shape (B, 1) containing the BOS token (1)
+    generated_seqs = torch.full((batch_size, 1), 1, dtype=torch.long, device=device)
+
+    # Each element set to True if the sequence has finished (hit EOS)
+    finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
+    for _ in range(max_len - 1):
+        dec_out = model.decoder(generated_seqs, enc_out)
+        logits = model.lm_head(dec_out) # (B, current_step, V)
+        next_tokens = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True) # (B, 1)
+
+        # Add the generated tokens to the sequences
+        generated_seqs = torch.cat([generated_seqs, next_tokens], dim=1)
+
+        # Check if the last token is EOS and change finished to True if it is 
+        finished = torch.logical_or(finished, next_tokens.squeeze(-1) == 2)
+
+        # If every word has finished, break
+        if finished.all():
+            break
+
+    results = []
+    for i in range(batch_size):
+        results.append(tokeniser.decode(generated_seqs[i]))
+
+    return results
+
 if __name__ == "__main__":
     set_seed(42)
 
@@ -266,20 +301,32 @@ if __name__ == "__main__":
     # Load data
     train_df, val_df, test_df = load_data()
 
+    # Create tokeniser and save it (it will always be the same)
+    tokeniser_path = Path('tokeniser.pkl')
+    if tokeniser_path.exists():
+        with open('tokeniser.pkl', 'rb') as f:
+            tokeniser = pickle.load(f)
+    else:
+        tokeniser = CharTokeniser(train_df)
+        with open(tokeniser_path, 'wb') as f:
+            pickle.dump(tokeniser, f)
+
     # Get best model
-    best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, PARAMS, STOPPING_METRIC)
+    best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, tokeniser, PARAMS, STOPPING_METRIC)
 
     # Save everything
     torch.save(best_model, 'model.pt')
     pd.DataFrame(train_log).to_csv('train_log.csv', index=False)
+    best_config['vocab_size'] = tokeniser.vocab_size
     Path('config.json').write_text(json.dumps(best_config, indent=2))
 
     # Reinit model for test generation
     model = load_best_model(best_model, best_config)
 
     # Generate test set predictions
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     test_words = test_df['word'].tolist()
     results_df = test_df.copy()
-    results_df['prediction'] = greedy_generate(model, test_words, device)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    results_df['prediction'] = greedy_generate(model, test_words, device, tokeniser)
     results_df.to_csv('test_results.csv', index=False)

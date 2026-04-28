@@ -2,37 +2,6 @@ import torch
 import torch.nn as nn
 import math
 
-def byte_tokenise(inputs: list[str] | str) -> torch.Tensor:
-    """Tokenise characters into ints ranging from 0-257.
-
-    Args:
-        inputs (list[str] | str): string or list of strings to be tokenised
-
-    Returns:
-        Tensor of shape (B, L) where L is the length of the longest input string.
-    """
-
-    # If input is just a string, put that string into a list
-    if type(inputs) == str:
-        inputs = [inputs]
-
-    # For each string in the inputs list, make a list of byte encodings
-    input_bytes = list(map(
-        lambda char: list(map(int, char.encode())),
-        inputs
-    ))
-
-    # Prepend 256 (BOS) and append 257 (EOS)
-    for seq in input_bytes:
-        seq.insert(0, 256)
-        seq.append(257)
-
-    # Add padding to make all inputs the same length
-    max_len = max(map(len, input_bytes))
-    padded_bytes = [x + [0] * (max_len - len(x)) for x in input_bytes]
-
-    return torch.tensor(padded_bytes).long() # Shape (B, max_len)
-
 class LexicalEmbedding(nn.Module):
     def __init__(self, vocab_size, embedding_dim, padding_idx):
         super().__init__()
@@ -303,12 +272,13 @@ class LanguageModellingHead(nn.Module):
         return self.projection(x)
     
 class Seq2Seq(nn.Module):
-    def __init__(self, d_model, num_heads, mlp_mode, num_layers, dropout_p):
+    def __init__(self, vocab_size, d_model, num_heads, mlp_mode, num_layers, dropout_p):
         super().__init__()
 
         if d_model % num_heads != 0:
             raise ValueError(f"d_model must be divisible by num_heads. Got {d_model}/{num_heads}={d_model/num_heads:.2f}")
 
+        self.vocab_size = vocab_size
         self.d_model = d_model
         self.num_heads = num_heads
         self.num_layers = num_layers
@@ -316,9 +286,9 @@ class Seq2Seq(nn.Module):
         self.dropout_p = dropout_p
 
         self.encoder = TransformerStack(
-            vocab_size=258, 
+            vocab_size=vocab_size, 
             d_model=d_model, 
-            max_len=64, 
+            max_len=21, # Train set maximum length is 21
             num_heads=num_heads,
             mlp_mode=mlp_mode,
             dropout_p=dropout_p, 
@@ -326,9 +296,9 @@ class Seq2Seq(nn.Module):
             )
 
         self.decoder = TransformerStack(
-            vocab_size=258, 
+            vocab_size=vocab_size, 
             d_model=d_model, 
-            max_len=64, 
+            max_len=21, 
             num_heads=num_heads,
             mlp_mode=mlp_mode,
             dropout_p=dropout_p, 
@@ -338,14 +308,14 @@ class Seq2Seq(nn.Module):
         
         self.lm_head = LanguageModellingHead(
             d_model=d_model,
-            vocab_size=258
+            vocab_size=vocab_size
         )
 
     def forward(self, encoder_inputs, decoder_inputs):
         """
         Args:
-            encoder_inputs: batch of byte tokenised words.
-            decoder_inputs: batch of byte toknised IPAs, shifted by 1.
+            encoder_inputs: batch of tokenised words.
+            decoder_inputs: batch of toknised IPAs, shifted by 1.
         """
 
         enc_out = self.encoder(encoder_inputs)
