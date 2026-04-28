@@ -10,6 +10,7 @@ class CharTokeniser():
         id_to_char (dict): integer to character mapping used for decoding.
         vocab (list): all unique graphemes and phonemes.
         vocab_size (int): number of unique tokens (always 21 if derived from train set, as it should be).
+        max_len (int): length of longest train IPA sequence + 3 for special tokens. 
     """
     def __init__(self, df: pd.DataFrame):
         """ 
@@ -39,6 +40,7 @@ class CharTokeniser():
         self.char_to_id = {char: i+4 for i, char in enumerate(self.vocab)}
         self.id_to_char = {i+4: char for i, char in enumerate(self.vocab)}
         self.vocab_size = len(self.char_to_id) + 4
+        self.max_len = df['ipa'].apply(len).max() + 3 # Assumes IPA will contain the longest sequences
 
     def _ipa_to_units(self, sequence: str) -> list:
         """Split a space-separated IPA sequence into phonemes. This method is necessary in order to treat the stress markers as their own unit.

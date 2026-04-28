@@ -38,8 +38,8 @@ def load_best_model(best_model=None, best_config: dict=None):
             best_config = json.load(f)
 
     # Load model
-    model_keys = ['vocab_size', 'd_model', 'num_heads', 'mlp_mode', 'num_layers', 'dropout_p'] # Get only architecture parameters
-    model_config = {k: best_config[k] for k in model_keys if k in best_config}
+    model_keys = ['lr', 'weight_decay'] # Filter out optimiser hyperparameters
+    model_config = {k: best_config[k] for k in model_keys if k not in best_config}
     model = Seq2Seq(**model_config).to(device)
 
     if best_model is None:
@@ -165,6 +165,7 @@ def train_model(train_loader, val_loader, tokeniser, stopping_metric, lr, weight
 
     model = Seq2Seq(
         vocab_size=tokeniser.vocab_size,
+        max_len=tokeniser.max_len,
         d_model=d_model,
         num_heads=num_heads, 
         mlp_mode=mlp_mode, 
@@ -222,7 +223,7 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharT
     for i, values in enumerate(combos):
         current_config = dict(zip(param_keys, values))
 
-        print(f"\nTesting [{i}/{len(combos)}]: {current_config}", flush=True)
+        print(f"\nTesting [{i+1}/{len(combos)}]: {current_config}", flush=True)
 
         # Train model
         model_weights, model_metric, train_log = train_model(train_loader, val_loader, tokeniser, stopping_metric, **current_config)
@@ -249,7 +250,7 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharT
     return best_metric, best_config, best_model_weights, best_train_log
 
 @torch.no_grad()
-def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokeniser, max_len: int=50):
+def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokeniser):
     model.eval()
 
     input_ids = tokeniser.encode(words).to(device) # (B, max_length_in_batch)
@@ -262,6 +263,7 @@ def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokenis
     # Each element set to True if the sequence has finished (hit EOS)
     finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
 
+    max_len = tokeniser.max_len
     for _ in range(max_len - 1):
         dec_out = model.decoder(generated_seqs, enc_out)
         logits = model.lm_head(dec_out) # (B, current_step, V)
@@ -318,6 +320,7 @@ if __name__ == "__main__":
     torch.save(best_model, 'model.pt')
     pd.DataFrame(train_log).to_csv('train_log.csv', index=False)
     best_config['vocab_size'] = tokeniser.vocab_size
+    best_config['max_len'] = tokeniser.max_len
     Path('config.json').write_text(json.dumps(best_config, indent=2))
 
     # Reinit model for test generation

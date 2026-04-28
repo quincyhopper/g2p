@@ -272,13 +272,14 @@ class LanguageModellingHead(nn.Module):
         return self.projection(x)
     
 class Seq2Seq(nn.Module):
-    def __init__(self, vocab_size, d_model, num_heads, mlp_mode, num_layers, dropout_p):
+    def __init__(self, vocab_size, max_len, d_model, num_heads, mlp_mode, num_layers, dropout_p):
         super().__init__()
 
         if d_model % num_heads != 0:
             raise ValueError(f"d_model must be divisible by num_heads. Got {d_model}/{num_heads}={d_model/num_heads:.2f}")
 
         self.vocab_size = vocab_size
+        self.max_len = max_len
         self.d_model = d_model
         self.num_heads = num_heads
         self.num_layers = num_layers
@@ -288,7 +289,7 @@ class Seq2Seq(nn.Module):
         self.encoder = TransformerStack(
             vocab_size=vocab_size, 
             d_model=d_model, 
-            max_len=21, # Train set maximum length is 21
+            max_len=max_len,
             num_heads=num_heads,
             mlp_mode=mlp_mode,
             dropout_p=dropout_p, 
@@ -298,7 +299,7 @@ class Seq2Seq(nn.Module):
         self.decoder = TransformerStack(
             vocab_size=vocab_size, 
             d_model=d_model, 
-            max_len=21, 
+            max_len=max_len,
             num_heads=num_heads,
             mlp_mode=mlp_mode,
             dropout_p=dropout_p, 
