@@ -40,7 +40,7 @@ class CharTokeniser():
         self.char_to_id = {char: i+4 for i, char in enumerate(self.vocab)}
         self.id_to_char = {i+4: char for i, char in enumerate(self.vocab)}
         self.vocab_size = int(len(self.char_to_id) + 4)
-        self.max_len = int(df['ipa'].apply(lambda x: len(self._ipa_to_units(x)) + 2)).max()
+        self.max_len = int(df['ipa'].apply(lambda x: len(self._ipa_to_units(x)) + 2).max())
 
     def _ipa_to_units(self, sequence: str) -> list:
         """Split a space-separated IPA sequence into phonemes. This method is necessary in order to treat the stress markers as their own unit.
