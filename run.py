@@ -222,7 +222,7 @@ def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_met
             print(f"Early stopping triggered. Best model saved: Epoch {early_stopping.best_epoch} | Val PER: {early_stopping.best_per * 100:.2f}% | Val WAcc: {early_stopping.best_wacc * 100:.2f}%")
             break
 
-    return early_stopping.best_weights, early_stopping.best_condition, train_log
+    return early_stopping, train_log
 
 def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharTokeniser, params: dict, stopping_metric: str):
 
@@ -246,21 +246,20 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharT
         print(f"\nTesting [{i+1}/{len(combos)}]: {current_config}", flush=True)
 
         # Train model
-        model_weights, model_metric, train_log = train_model(train_loader, val_loader, tokeniser, stopping_metric, **current_config)
-        print(f"Val {stopping_metric}: {model_metric:.4f}", flush=True)
+        early_stopping, train_log = train_model(train_loader, val_loader, tokeniser, stopping_metric, **current_config)
 
         # Determine if model is best
         if stopping_metric in ('loss', 'per'):
             # Decreasing is bette 
-            model_is_better = model_metric < best_metric
+            model_is_better = early_stopping.best_condition < best_metric
         elif stopping_metric == 'wacc':
             # Increasing is better 
-            model_is_better = model_metric > best_metric
+            model_is_better = early_stopping.best_condition > best_metric
 
         if model_is_better:
-            best_metric = model_metric
+            best_metric = early_stopping.best_condition
             best_config = current_config
-            best_model_weights = model_weights
+            best_model_weights = early_stopping.best_weights
             best_train_log = train_log
 
     print("\nHyperparameter search complete")
