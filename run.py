@@ -311,8 +311,8 @@ if __name__ == "__main__":
     # Save everything
     torch.save(best_model, 'model.pt')
     pd.DataFrame(train_log).to_csv('train_log.csv', index=False)
-    best_config['vocab_size'] = tokeniser.vocab_size
-    best_config['max_len'] = tokeniser.max_len
+    best_config['vocab_size'] = int(tokeniser.vocab_size)
+    best_config['max_len'] = int(tokeniser.max_len)
     Path('config.json').write_text(json.dumps(best_config, indent=2))
 
     # Reinit model for test generation
