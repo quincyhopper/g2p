@@ -162,12 +162,14 @@ def calculate_wacc(preds: list[tuple]):
 
 def calculate_per(preds: list[tuple], tokeniser: CharTokeniser):
     total_dist = sum(
-        editdistance.eval(gold.split(), pred.split()) / len(gold.split())
+        editdistance.eval(
+            tokeniser.ipa_to_units(gold), tokeniser.ipa_to_units(pred)) / len(gold.split())
         for gold, pred in preds
     )
     return total_dist / len(preds)
 
 def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
+    set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Seq2Seq(
@@ -299,15 +301,14 @@ def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokenis
     return results
 
 if __name__ == "__main__":
-    set_seed(42)
 
     PARAMS = {
-        'lr': [1e-4, 5e-4],
-        'weight_decay': [1e-3],
-        'dropout_p': [0.0, 0.1, 0.2],
+        'lr': [1e-4],
+        'weight_decay': [1e-3, 1e-4],
+        'dropout_p': [0.2, 0.3],
         'd_model': [128, 256],
-        'num_layers': [4, 6],
-        'num_heads': [16],
+        'num_layers': [4],
+        'num_heads': [4, 8],
         'mlp_mode': ['relu', 'swiglu']
     } 
 
