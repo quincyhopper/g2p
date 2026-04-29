@@ -9,8 +9,8 @@ class CharTokeniser():
         char_to_id (dict): character to integer mapping used for encoding.
         id_to_char (dict): integer to character mapping used for decoding.
         vocab (list): all unique graphemes and phonemes.
-        vocab_size (int): number of unique tokens (always 21 if derived from train set, as it should be).
-        max_len (int): length of longest train IPA sequence + 3 for special tokens. 
+        vocab_size (int): length of vocab list + 4 (for special tokens)
+        max_len (int): length of longest train IPA sequence + 2 for BOS and EOS tokens. 
     """
     def __init__(self, df: pd.DataFrame):
         """ 
@@ -22,34 +22,27 @@ class CharTokeniser():
         Args:
             df: the training datset from which to derive the vocabulary
         """
-
-        word_chars = set(char for word in df['word'] for char in word)
-
         self.stress_markers = {'ˌ', 'ˈ'}
 
-        phonemes = set()
-        for ipa_seq in df['ipa']:
-            for phoneme in ipa_seq.split():
-                if phoneme[0] in self.stress_markers:
-                    phonemes.add(phoneme[0])
-                    phonemes.add(phoneme[1:])
-                else:
-                    phonemes.add(phoneme)
-
+        word_chars = set(char for word in df['word'] for char in word)
+        phonemes = set(phoneme for ipa in df['ipa'] for phoneme in self.ipa_to_units(ipa))
         self.vocab = list(sorted(word_chars | phonemes))
+
         self.char_to_id = {char: i+4 for i, char in enumerate(self.vocab)}
         self.id_to_char = {i+4: char for i, char in enumerate(self.vocab)}
-        self.vocab_size = int(len(self.char_to_id) + 4)
-        self.max_len = int(df['ipa'].apply(lambda x: len(self._ipa_to_units(x)) + 2).max())
+        self.vocab_size = int(len(self.vocab) + 4)
+        self.max_len = int(df['ipa'].apply(lambda x: len(self.ipa_to_units(x)) + 2).max())
 
-    def _ipa_to_units(self, sequence: str) -> list:
+    def ipa_to_units(self, sequence: str) -> list:
         """Split a space-separated IPA sequence into phonemes. This method is necessary in order to treat the stress markers as their own unit.
 
         Args:
             sequence (str): a space-separated IPA sequence like p ɾ e k a ˈb i d o
 
         Returns:
-            List of phonemic units, not including whitespace. For example, t͡ʃ is treated as its own unit instead of multiple tokens.
+            List of phonemic units, not including whitespace. For example:
+                "r u ɾ a l i ˈd a d" -> ['r', 'u', 'ɾ', 'a', 'l', 'i', 'ˈ', 'd', 'a', 'd'] \\
+                "k a t͡ʃ e t e ˈa d a" -> ['k', 'a', 't͡ʃ', 'e', 't', 'e', 'ˈ', 'a', 'd', 'a']
         """
         units = []
         for token in sequence.split():
@@ -68,6 +61,9 @@ class CharTokeniser():
         Args:
             inputs (str | list): a space-separated sequence of graphemes or IPA.
             is_ipa (bool): True if input is IPA, False if input is graphemes.
+
+        Returns:
+            Torch tensor of shape (B, max_IPA_length_in_batch)
         """
         if isinstance(inputs, str):
             inputs = [inputs]
@@ -75,7 +71,7 @@ class CharTokeniser():
         tokenised_list = []
         for sequence in inputs:
             if is_ipa:
-                units = self._ipa_to_units(sequence)
+                units = self.ipa_to_units(sequence)
             else:
                 units = list(sequence)
             tokens = [1] + [self.char_to_id.get(u, 3) for u in units] + [2]
@@ -87,7 +83,7 @@ class CharTokeniser():
         return torch.tensor(padded).long()
     
     def decode(self, tokens: torch.Tensor):
-        """Decode a tokenised integers into IPA phonemes. """
+        """Decode tokenised integers into IPA phonemes. """
         if torch.is_tensor(tokens):
             tokens = tokens.flatten().tolist()
 
