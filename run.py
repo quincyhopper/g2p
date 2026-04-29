@@ -101,31 +101,59 @@ def eval(model: nn.Module, val_loader, loss_fn: nn.modules.loss._Loss, tokeniser
     return epoch_loss / len(val_loader)
 
 class EarlyStopping:
-    def __init__(self, patience: int, metric: str, delta=1e-4):
+    """Class for early stopping.
+    
+    Attributes:
+        patience (int): number of epochs to wait for improvement.
+        delta (float): small margin by which the condition must improve by.
+        counter (int): counter for number of epochs since improvement.
+        condition (str): the metric on which to condition early stopping (loss, PER, WAcc).
+        best_weights: the state dict of the best model.
+        best_epoch (int): the model's best epoch in terms of the given condition.
+        best_per (float): the model's PER on the best epoch (unless PER is the condition, this might not be the best PER overall).
+        best_wacc (float): the model's WAcc on the best epoch (same thing applies here).
+    """
+    def __init__(self, patience: int, condition: str, delta=1e-4):
         self.patience = patience
         self.delta = delta
-        self.metric = metric
         self.counter = 0
-        self.best_epoch = None
+        self.condition = condition
+
         self.best_weights = None
+        self.best_epoch = None
+        self.best_per = None
+        self.best_wacc = None
 
-        if self.metric in ('loss', 'per'):
-            self.best_metric = float('inf')
-        elif metric == 'wacc':
-            self.best_metric = -float('inf')
+        if self.condition in ('loss', 'per'):
+            self.best_condition = float('inf')
+        elif condition == 'wacc':
+            self.best_condition = -float('inf')
 
-    def step(self, model, metric, epoch):
-        if self.metric in ('loss', 'per'):
+    def step(self, model, metric, epoch, per, wacc):
+        """
+        Args:
+            model: the model.
+            metric (float): either loss, PER or WAcc.
+            epoch (int): the current epoch.
+            per (float): PER at current epoch.
+            wacc (float): WAcc at current epoch.
+
+        Returns:
+            True if training should terminate, else False. 
+        """
+        if self.condition in ('loss', 'per'):
             # Decreasing is better
-            is_better = metric < self.best_metric - self.delta
+            is_better = metric < self.best_condition - self.delta
         else:
             # Increasing is better
-            is_better = metric > self.best_metric + self.delta
+            is_better = metric > self.best_condition + self.delta
 
         if is_better:
             self.counter = 0
-            self.best_metric = metric
+            self.best_condition = metric
             self.best_epoch = epoch
+            self.best_per = per
+            self.best_wacc = wacc
             self.best_weights = copy.deepcopy(model.state_dict())
         else:
             self.counter += 1
@@ -175,7 +203,7 @@ def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_met
         val_wacc = calculate_wacc(preds)
 
         train_log.append({
-            'epoch': epoch+1,
+            'epoch': epoch,
             'train_loss': train_loss,
             'val_loss': val_loss,
             'val_per': val_per,
@@ -189,12 +217,12 @@ def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_met
         elif stopping_metric == 'wacc':
             metric = val_wacc
 
-        stop = early_stopping.step(model, metric, epoch=epoch+1)
+        stop = early_stopping.step(model, metric, epoch, val_per, val_wacc)
         if stop:
-            print(f"Early stopping triggered. Best model saved at epoch {early_stopping.best_epoch} with val {stopping_metric} {early_stopping.best_metric:.4f}")
+            print(f"Early stopping triggered. Best model saved: Epoch {early_stopping.best_epoch} | Val PER: {early_stopping.best_per * 100:.2f}% | Val WAcc: {early_stopping.best_wacc * 100:.2f}%")
             break
 
-    return early_stopping.best_weights, early_stopping.best_metric, train_log
+    return early_stopping.best_weights, early_stopping.best_condition, train_log
 
 def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharTokeniser, params: dict, stopping_metric: str):
 
