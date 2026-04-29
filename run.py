@@ -110,7 +110,8 @@ class EarlyStopping:
         condition (str): the metric on which to condition early stopping (loss, PER, WAcc).
         best_weights: the state dict of the best model.
         best_epoch (int): the model's best epoch in terms of the given condition.
-        best_per (float): the model's PER on the best epoch (unless PER is the condition, this might not be the best PER overall).
+        best_loss (float): the model's loss on the best epoch (unless loss is the condition, this might not be the best loss overall)
+        best_per (float): the model's PER on the best epoch (same thing applies here).
         best_wacc (float): the model's WAcc on the best epoch (same thing applies here).
     """
     def __init__(self, patience: int, condition: str, delta=1e-4):
@@ -121,19 +122,15 @@ class EarlyStopping:
 
         self.best_weights = None
         self.best_epoch = None
-        self.best_per = None
-        self.best_wacc = None
+        self.best_loss = float('inf')
+        self.best_per = float('inf')
+        self.best_wacc = -float('inf')
 
-        if self.condition in ('loss', 'per'):
-            self.best_condition = float('inf')
-        elif condition == 'wacc':
-            self.best_condition = -float('inf')
-
-    def step(self, model, metric, epoch, per, wacc):
+    def step(self, model, epoch, loss, per, wacc):
         """
         Args:
             model: the model.
-            metric (float): either loss, PER or WAcc.
+            metric (float): loss at current epoch.
             epoch (int): the current epoch.
             per (float): PER at current epoch.
             wacc (float): WAcc at current epoch.
@@ -141,16 +138,16 @@ class EarlyStopping:
         Returns:
             True if training should terminate, else False. 
         """
-        if self.condition in ('loss', 'per'):
-            # Decreasing is better
-            is_better = metric < self.best_condition - self.delta
+        if self.condition == 'loss':
+            is_better = loss < self.best_loss - self.delta
+        elif self.condition == 'per':
+            is_better = per < self.best_per - self.delta
         else:
-            # Increasing is better
-            is_better = metric > self.best_condition + self.delta
+            is_better = wacc > self.best_wacc + self.delta
 
         if is_better:
             self.counter = 0
-            self.best_condition = metric
+            self.best_loss = loss
             self.best_epoch = epoch
             self.best_per = per
             self.best_wacc = wacc
@@ -210,24 +207,19 @@ def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_met
             'val_wacc': val_wacc
         })
 
-        if stopping_metric == 'loss':
-            metric = val_loss
-        elif stopping_metric == 'per':
-            metric = val_per
-        elif stopping_metric == 'wacc':
-            metric = val_wacc
-
-        stop = early_stopping.step(model, metric, epoch, val_per, val_wacc)
-        if stop:
-            print(f"Early stopping triggered. Best model saved: Epoch {early_stopping.best_epoch} | Val PER: {early_stopping.best_per * 100:.2f}% | Val WAcc: {early_stopping.best_wacc * 100:.2f}%")
+        if early_stopping.step(model, epoch, val_loss, val_per, val_wacc):
+            print(f"Early stopping triggered. Best model saved: Epoch {early_stopping.best_epoch} | Val loss: {early_stopping.best_loss:.4f} | Val PER: {early_stopping.best_per * 100:.2f}% | Val WAcc: {early_stopping.best_wacc * 100:.2f}%")
             break
 
     return early_stopping, train_log
 
 def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharTokeniser, params: dict, stopping_metric: str):
 
-    # Init best outcomes
-    best_metric = float('inf') if stopping_metric in ('loss', 'per') else -float('inf')
+    # Init metics to determine best model
+    best_loss = float('inf')
+    best_per = float('inf')
+    best_wacc = -float('inf')
+    best_epoch = 0
     best_config = None
     best_model_weights = None
     best_train_log = None
@@ -248,25 +240,27 @@ def hparam_search(train_df: pd.DataFrame, val_df: pd.DataFrame, tokeniser: CharT
         # Train model
         early_stopping, train_log = train_model(train_loader, val_loader, tokeniser, stopping_metric, **current_config)
 
-        # Determine if model is best
-        if stopping_metric in ('loss', 'per'):
-            # Decreasing is bette 
-            model_is_better = early_stopping.best_condition < best_metric
-        elif stopping_metric == 'wacc':
-            # Increasing is better 
-            model_is_better = early_stopping.best_condition > best_metric
+        if stopping_metric == 'loss':
+            model_is_better = early_stopping.best_loss < best_loss
+        elif stopping_metric == 'per':
+            model_is_better = early_stopping.best_per < best_per
+        else:
+            model_is_better = early_stopping.best_wacc > best_wacc
 
         if model_is_better:
-            best_metric = early_stopping.best_condition
-            best_config = current_config
+            best_loss = early_stopping.best_loss
+            best_per = early_stopping.best_per
+            best_wacc = early_stopping.best_wacc
+            best_epoch = early_stopping.best_epoch
             best_model_weights = early_stopping.best_weights
+            best_config = current_config
             best_train_log = train_log
 
     print("\nHyperparameter search complete")
     print(f"Best config: {best_config}")
-    print(f"Best val {stopping_metric}: {best_metric:.4f}")
+    print(f"Epoch: {best_epoch} | Val loss: {best_loss:.4f} | Val PER: {best_per * 100:.2f}% | Val WAcc: {best_wacc * 100:.2f}%")
 
-    return best_metric, best_config, best_model_weights, best_train_log
+    return best_config, best_model_weights, best_train_log
 
 @torch.no_grad()
 def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokeniser):
@@ -333,7 +327,7 @@ if __name__ == "__main__":
             pickle.dump(tokeniser, f)
 
     # Get best model
-    best_wacc, best_config, best_model, train_log = hparam_search(train_df, val_df, tokeniser, PARAMS, STOPPING_METRIC)
+    best_config, best_model, train_log = hparam_search(train_df, val_df, tokeniser, PARAMS, STOPPING_METRIC)
 
     # Save everything
     torch.save(best_model, 'model.pt')
