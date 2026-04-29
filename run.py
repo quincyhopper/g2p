@@ -161,11 +161,11 @@ def calculate_wacc(preds: list[tuple]):
     return sum(gold == pred for gold, pred in preds) / len(preds)
 
 def calculate_per(preds: list[tuple], tokeniser: CharTokeniser):
-    total_dist = sum(
-        editdistance.eval(
-            tokeniser.ipa_to_units(gold), tokeniser.ipa_to_units(pred)) / len(gold.split())
-        for gold, pred in preds
-    )
+    total_dist = 0.0
+    for gold, pred in preds:
+        gold_phonemes = tokeniser.ipa_to_units(gold)
+        pred_phonemes = tokeniser.ipa_to_units(pred)
+        total_dist += editdistance.eval(gold_phonemes, pred_phonemes) / len(gold_phonemes)
     return total_dist / len(preds)
 
 def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
