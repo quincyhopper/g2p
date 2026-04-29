@@ -272,8 +272,11 @@ def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokenis
     enc_out = model.encoder(input_ids)         # (B, L, d_model)
     batch_size = enc_out.shape[0]
 
+    bos_token = 1
+    eos_token = 2
+
     # Create tensor of shape (B, 1) containing the BOS token (1)
-    generated_seqs = torch.full((batch_size, 1), 1, dtype=torch.long, device=device)
+    generated_seqs = torch.full((batch_size, 1), bos_token, dtype=torch.long, device=device)
 
     # Each element set to True if the sequence has finished (hit EOS)
     finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
@@ -288,15 +291,19 @@ def greedy_generate(model: nn.Module, words: list, device, tokeniser:CharTokenis
         generated_seqs = torch.cat([generated_seqs, next_tokens], dim=1)
 
         # Check if the last token is EOS and change finished to True if it is 
-        finished = torch.logical_or(finished, next_tokens.squeeze(-1) == 2)
+        finished = torch.logical_or(finished, next_tokens.squeeze(-1) == eos_token)
 
         # If every word has finished, break
         if finished.all():
             break
 
     results = []
-    for i in range(batch_size):
-        results.append(tokeniser.decode(generated_seqs[i]))
+    for row in generated_seqs:
+        # Sequences that finished early will still have tokens after the EOS token, so we select up to the first EOS token
+        seq = row.tolist()
+        if eos_token in seq:
+            seq = seq[:seq.index(eos_token) + 1]
+        results.append(tokeniser.decode(seq))
 
     return results
 
