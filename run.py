@@ -38,8 +38,8 @@ def load_best_model(best_model=None, best_config: dict=None):
             best_config = json.load(f)
 
     # Load model
-    model_keys = ['lr', 'weight_decay'] # Filter out optimiser hyperparameters
-    model_config = {k: best_config[k] for k in model_keys if k not in best_config}
+    model_keys = {'lr', 'weight_decay'} # Filter out optimiser hyperparameters
+    model_config = {k: v for k, v in best_config.items() if k not in model_keys}
     model = Seq2Seq(**model_config).to(device)
 
     if best_model is None:
@@ -132,33 +132,15 @@ class EarlyStopping:
 
         return self.counter >= self.patience
     
-def calculate_wacc(model: nn.Module, val_loader, device, tokeniser):
-    """Calculate word accuracy (WAcc) instead of loss during validation step."""
-    correct = 0
-    total = 0
+def calculate_wacc(preds: list[tuple]):
+    return sum(gold == pred for gold, pred in preds) / len(preds)
 
-    for batch in val_loader:
-        preds = greedy_generate(model, batch['word'], device, tokeniser)
-        for pred, gold in zip(preds, batch['ipa']):
-            if pred == gold:
-                correct += 1
-            total += 1
-
-    return correct / total
-
-def calculate_per(model: nn.Module, val_loader, device, tokeniser):
-    total_dist = 0.0
-    total_words = 0
-
-    for batch in val_loader:
-        preds = greedy_generate(model, batch['word'], device, tokeniser)
-        for pred, gold in zip(preds, batch['ipa']):
-            pred_tokens = pred.split()
-            gold_tokens = gold.split()
-            total_dist += editdistance.eval(pred_tokens, gold_tokens) / len(gold_tokens)
-            total_words += 1
-
-    return total_dist / total_words
+def calculate_per(preds: list[tuple]):
+    total_dist = sum(
+        editdistance.eval(gold.split(), pred.split()) / len(gold.split())
+        for gold, pred in preds
+    )
+    return total_dist / len(preds)
 
 def train_model(train_loader, val_loader, tokeniser, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -180,22 +162,32 @@ def train_model(train_loader, val_loader, tokeniser, stopping_metric, lr, weight
     train_log = []
     for epoch in range(1000000): # Effectively infinite training
 
-        train_loss = train(model, train_loader, optim, criterion, tokeniser, device=device)
+        # Compute loss on train and val
+        train_loss = train(model, train_loader, optim, criterion, tokeniser, device)
         val_loss = eval(model, val_loader, criterion, tokeniser, device)
         
-        if stopping_metric == 'loss':
-            metric = val_loss
-        elif stopping_metric == 'wacc':
-            metric = calculate_wacc(model, val_loader, device, tokeniser)
-        elif stopping_metric == 'per':
-            metric = calculate_per(model, val_loader, device, tokeniser)
+        # Make predictions and compute PER and WAcc on val 
+        preds = []
+        for batch in val_loader:
+            batch_preds = greedy_generate(model, batch['word'], device, tokeniser)
+            preds.extend(zip(batch['ipa'], batch_preds))
+        val_per = calculate_per(preds)
+        val_wacc = calculate_wacc(preds)
 
         train_log.append({
             'epoch': epoch+1,
             'train_loss': train_loss,
             'val_loss': val_loss,
-            f'val_{stopping_metric}': metric
+            'val_per': val_per,
+            'val_wacc': val_wacc
         })
+
+        if stopping_metric == 'loss':
+            metric = val_loss
+        elif stopping_metric == 'per':
+            metric = val_per
+        elif stopping_metric == 'wacc':
+            metric = val_wacc
 
         stop = early_stopping.step(model, metric, epoch=epoch+1)
         if stop:
