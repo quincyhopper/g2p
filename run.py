@@ -185,7 +185,7 @@ def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_met
     
     optim = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.CrossEntropyLoss(ignore_index=0) # Ignore padding index
-    early_stopping = EarlyStopping(patience=30, metric=stopping_metric, delta=0.0001)
+    early_stopping = EarlyStopping(patience=30, condition=stopping_metric, delta=0.0001)
 
     train_log = []
     for epoch in range(1000000): # Effectively infinite training
