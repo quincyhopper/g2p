@@ -135,14 +135,14 @@ class EarlyStopping:
 def calculate_wacc(preds: list[tuple]):
     return sum(gold == pred for gold, pred in preds) / len(preds)
 
-def calculate_per(preds: list[tuple]):
+def calculate_per(preds: list[tuple], tokeniser: CharTokeniser):
     total_dist = sum(
         editdistance.eval(gold.split(), pred.split()) / len(gold.split())
         for gold, pred in preds
     )
     return total_dist / len(preds)
 
-def train_model(train_loader, val_loader, tokeniser, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
+def train_model(train_loader, val_loader, tokeniser: CharTokeniser, stopping_metric, lr, weight_decay, dropout_p, d_model, num_layers, num_heads, mlp_mode):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Seq2Seq(
@@ -171,7 +171,7 @@ def train_model(train_loader, val_loader, tokeniser, stopping_metric, lr, weight
         for batch in val_loader:
             batch_preds = greedy_generate(model, batch['word'], device, tokeniser)
             preds.extend(zip(batch['ipa'], batch_preds))
-        val_per = calculate_per(preds)
+        val_per = calculate_per(preds, tokeniser)
         val_wacc = calculate_wacc(preds)
 
         train_log.append({
