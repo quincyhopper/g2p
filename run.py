@@ -336,14 +336,3 @@ if __name__ == "__main__":
     best_config['vocab_size'] = int(tokeniser.vocab_size)
     best_config['max_len'] = int(tokeniser.max_len)
     Path('config.json').write_text(json.dumps(best_config, indent=2))
-
-    # Reinit model for test generation
-    model = load_best_model(best_model, best_config)
-
-    # Generate test set predictions
-    test_words = test_df['word'].tolist()
-    results_df = test_df.copy()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    results_df['prediction'] = greedy_generate(model, test_words, device, tokeniser)
-    results_df.to_csv('test_results.csv', index=False)
