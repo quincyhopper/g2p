@@ -28,6 +28,11 @@ def load_data():
     val_df = pd.read_csv('data/spa_val.tsv', sep='\t', names=['word', 'ipa'])
     test_df = pd.read_csv('data/spa_test.tsv', sep='\t', names=['word', 'ipa'])
 
+    # Filter out train examples that are in the test set
+    train_df = train_df[~train_df['word'].isin(test_df['word'])]
+
+    assert len(set(train_df['word']) & set(train_df['word'])) == 0
+
     return train_df, val_df, test_df
 
 def load_best_model(best_model=None, best_config: dict=None):
