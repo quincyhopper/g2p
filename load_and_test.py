@@ -1,4 +1,3 @@
-import pandas as pd
 import torch
 import pickle
 from pathlib import Path
@@ -20,13 +19,16 @@ if __name__ == "__main__":
     train_words = train['word'].tolist()
     train['prediction'] = greedy_generate(model, train_words, device, tokeniser)
     train.to_csv('results/train_results.csv', index=False)
+    print("Saved train results")
 
     val = val.copy()
     val_words = val['word'].tolist()
     val['prediction'] = greedy_generate(model, val_words, device, tokeniser)
     val.to_csv('results/val_results.csv', index=False)
+    print("Saved val results")
 
     test = test.copy()
     test_words = test['word'].tolist()
     test['prediction'] = greedy_generate(model, test_words, device, tokeniser)
     test.to_csv('results/test_results.csv', index=False)
+    print("Saved test results")
