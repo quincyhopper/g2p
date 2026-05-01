@@ -31,7 +31,7 @@ def load_data():
     # Filter out train examples that are in the test set
     train_df = train_df[~train_df['word'].isin(test_df['word'])]
 
-    assert len(set(train_df['word']) & set(train_df['word'])) == 0
+    assert len(set(train_df['word']) & set(test_df['word'])) == 0
 
     return train_df, val_df, test_df
 
